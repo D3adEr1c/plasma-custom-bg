@@ -13,12 +13,12 @@ A KDE Plasma wallpaper plugin with customizable framing, zoom, independent day/n
 
 ## Features
 
-- **Custom framing:** drag the preview to choose the visible image area without modifying the source file.
-- **Zoom controls:** adjust from 100% to 300% in 1% steps, with mouse wheel support.
-- **Proportional previews:** preview your wallpaper at the target display's aspect ratio, including portrait and ultrawide layouts.
-- **Independent day/night profiles:** choose separate images, zoom levels, and framing for each variant.
-- **Automatic switching:** follow the system day/night cycle or light/dark appearance, or keep either variant active.
-- **Per-display persistence:** save profiles by connector name and restore saved settings when displays disconnect or reconnect.
+- **Custom framing**
+- **Zoom controls**
+- **Proportional previews**
+- **Independent day/night profiles**
+- **Automatic switching**
+- **Per-display persistence**
 
 
 ## Requirements
