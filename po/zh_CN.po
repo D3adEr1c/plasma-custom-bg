@@ -1,0 +1,104 @@
+msgid ""
+msgstr "Project-Id-Version: Custom Image 0.3.3\nPO-Revision-Date: 2026-10-01 07:30+0000\nLast-Translator: Custom Image contributors\nLanguage-Team: Simplified Chinese\nLanguage: zh_CN\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Choose wallpaper"
+msgstr "选择壁纸"
+
+msgid "Images (*.png *.jpg *.jpeg *.webp *.bmp *.avif)"
+msgstr "图像 (*.png *.jpg *.jpeg *.webp *.bmp *.avif)"
+
+msgid "All files (*)"
+msgstr "所有文件 (*)"
+
+msgid "Image:"
+msgstr "图像："
+
+msgid "Image file path"
+msgstr "图像文件路径"
+
+msgid "Browse…"
+msgstr "浏览…"
+
+msgid "Preview screen:"
+msgstr "预览屏幕："
+
+msgid "Screen size is not ready. Showing a temporary 16:9 preview."
+msgstr "尚未获取屏幕尺寸，暂时显示 16:9 预览。"
+
+msgid "Target resolution: %1 × %2"
+msgstr "目标分辨率：%1 × %2"
+
+msgid "Preview resolution: %1 × %2"
+msgstr "预览分辨率：%1 × %2"
+
+msgid "Drag the image to frame it. Scroll to zoom."
+msgstr "拖动图像调整选区，滚动鼠标滚轮缩放。"
+
+msgid "Zoom:"
+msgstr "缩放："
+
+msgid "Reset"
+msgstr "重置"
+
+msgid "Cannot load image"
+msgstr "无法加载图像"
+
+msgid "Choose an image"
+msgstr "请选择图像"
+
+msgid "Switch wallpapers:"
+msgstr "壁纸切换："
+
+msgid "Follow system day/night cycle"
+msgstr "跟随系统日夜周期"
+
+msgid "Follow light/dark theme"
+msgstr "跟随浅色／深色主题"
+
+msgid "Always day"
+msgstr "固定日间"
+
+msgid "Always night"
+msgstr "固定夜间"
+
+msgid "Configure system day/night cycle…"
+msgstr "配置系统日夜周期…"
+
+msgid "Day"
+msgstr "日间"
+
+msgid "Night"
+msgstr "夜间"
+
+msgid "Currently active: Night"
+msgstr "当前生效：夜间"
+
+msgid "Currently active: Day"
+msgstr "当前生效：日间"
+
+msgid "No night image selected. The desktop will use the day image and framing."
+msgstr "尚未选择夜间图像，桌面将沿用日间图像及其选区。"
+
+msgid "Copy day settings to night"
+msgstr "将日间设置复制到夜间"
+
+msgid "The wallpaper configuration is from an older version. Close Settings, log out and log back in before editing day/night wallpapers."
+msgstr "壁纸配置仍为旧版本。请关闭系统设置，注销并重新登录后，再编辑日夜壁纸。"
+
+msgid "The selected preview display is disconnected. Select a connected display."
+msgstr "所选预览显示器已断开，请选择已连接的显示器。"
+
+msgid "This wallpaper belongs to another display. Configure a wallpaper for this display."
+msgstr "这份壁纸配置属于另一台显示器，请为当前显示器配置壁纸。"
+
+msgid "Bind settings to %1"
+msgstr "将设置绑定至 %1"
+
+msgid "No saved wallpaper for this display. Choose an image in wallpaper settings."
+msgstr "此显示器尚无已保存的壁纸。请在壁纸设置中选择图像。"
+
+msgid "Copy night settings to day"
+msgstr "将夜间设置复制到日间"
+
+msgid "Choose a night image before copying its settings to day."
+msgstr "请先选择夜间图像，再将其设置复制到日间。"

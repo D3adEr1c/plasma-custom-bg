@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="Image" type="String"><default></default></entry>
+    <entry name="Zoom" type="Double"><default>1.0</default></entry>
+    <entry name="FocusX" type="Double"><default>0.5</default></entry>
+    <entry name="FocusY" type="Double"><default>0.5</default></entry>
+    <entry name="NightImage" type="String"><default></default></entry>
+    <entry name="NightZoom" type="Double"><default>1.0</default></entry>
+    <entry name="NightFocusX" type="Double"><default>0.5</default></entry>
+    <entry name="NightFocusY" type="Double"><default>0.5</default></entry>
+    <entry name="SwitchMode" type="Int"><default>2</default></entry>
+    <entry name="ScheduleState" type="String"><default></default></entry>
+    <entry name="TargetOutput" type="String"><default></default></entry>
+    <entry name="ProfileRevision" type="String"><default>0</default></entry>
+  </group>
+</kcfg>

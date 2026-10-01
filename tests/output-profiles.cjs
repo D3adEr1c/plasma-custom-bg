@@ -1,0 +1,22 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ctx = vm.createContext({});
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../org.liby0zud.customimage/contents/ui/OutputProfiles.js'), 'utf8'), ctx);
+const a = {...ctx.defaults('HDMI-A-1'), Image:'a', NightImage:'a-night', ProfileRevision:'100'};
+const b = {...ctx.defaults('eDP-1'), Image:'b', NightImage:'b-night', Zoom:2.7,
+           FocusX:0, NightFocusY:1, SwitchMode:1, ProfileRevision:'200'};
+assert.equal(ctx.select('eDP-1', a, b, ''), b);
+assert.equal(ctx.select('eDP-1', a, null, ''), null);
+assert.equal(ctx.select('', a, b, ''), null);
+assert.equal(ctx.select('eDP-1', {...b, Zoom:1, ProfileRevision:'199'}, b, ''), b);
+assert.equal(ctx.select('eDP-1', {...b, Zoom:1, ProfileRevision:'200'}, b, ''), b);
+assert.equal(ctx.select('eDP-1', {...b, Zoom:2.9, ProfileRevision:'201'}, b, '').Zoom, 2.9);
+const legacy = {...a, TargetOutput:'', ProfileRevision:'0'};
+assert.equal(ctx.select('eDP-1', legacy, null, 'HDMI-A-1'), null);
+assert.equal(ctx.select('HDMI-A-1', legacy, null, 'HDMI-A-1').TargetOutput, 'HDMI-A-1');
+assert.equal(ctx.snapshot(b).FocusX, 0);
+assert.equal(ctx.snapshot(b).NightFocusY, 1);
+assert.equal(ctx.snapshot({cfg_Zoom:2, cfg_SwitchMode:0}, 'cfg_').SwitchMode, 0);
+console.log('Passed: independent profile choice, stale revision rejection, legacy ownership, complete snapshot defaults.');
