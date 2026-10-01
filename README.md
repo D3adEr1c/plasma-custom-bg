@@ -4,9 +4,10 @@ A KDE Plasma wallpaper plugin with customizable framing, zoom, independent day/n
 
 ## Screenshots
 
-| Day | Night |
-| :-: | :-: |
-| ![Day](./assets/屏幕截图_20261001_160952.png) | ![Night](./assets/屏幕截图_20261001_160932.png) |
+<p align="center">
+  <img src="./assets/屏幕截图_20261001_160952.png" alt="Day" width="49%">
+  <img src="./assets/屏幕截图_20261001_160932.png" alt="Night" width="49%">
+</p>
 
 
 
