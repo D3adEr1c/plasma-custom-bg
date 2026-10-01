@@ -1,0 +1,14 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const logic = vm.createContext({});
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../org.liby0zud.customimage/contents/ui/GalleryLogic.js'), 'utf8'), logic);
+assert(logic.isSelected('file:///usr/share/wallpapers/Next/#light', 'file:///usr/share/wallpapers/Next/', ''));
+assert(logic.isSelected('file:///usr/share/wallpapers/Next/#dark', 'file:///usr/share/wallpapers/Next/', ''));
+assert(!logic.isSelected('file:///usr/share/wallpapers/Next/#dark', 'file:///usr/share/wallpapers/Other/', ''));
+assert(logic.isSelected('file:///home/user/Pictures/a%23b%3Fc.png', '/home/user/Pictures/a%23b%3Fc.png', ''));
+assert.equal(logic.fileLabel('file:///usr/share/wallpapers/Next/#dark'), 'Next');
+assert.equal(logic.fileLabel('file:///home/user/Pictures/a%23b%3Fc.png'), 'a#b?c.png');
+assert.equal(logic.fileLabel('/home/user/Pictures/100%.png'), '100%.png');
+console.log('Passed: package variants share gallery identity; fragments and encoded filenames retain correct labels.');

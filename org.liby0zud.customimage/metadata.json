@@ -6,7 +6,7 @@
     "Icon": "preferences-desktop-wallpaper",
     "Category": "Wallpaper",
     "License": "MIT",
-    "Version": "0.3.4",
+    "Version": "0.4.1",
     "Name[zh_CN]": "自定义图像",
     "Description[zh_CN]": "分别自定义日间和夜间桌面图像的选区与缩放"
   },

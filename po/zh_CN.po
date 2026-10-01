@@ -102,3 +102,21 @@ msgstr "将夜间设置复制到日间"
 
 msgid "Choose a night image before copying its settings to day."
 msgstr "请先选择夜间图像，再将其设置复制到日间。"
+
+msgid "Adjust framing…"
+msgstr "调整选区…"
+
+msgid "Adjust night framing"
+msgstr "调整夜间选区"
+
+msgid "Adjust day framing"
+msgstr "调整日间选区"
+
+msgid "Add…"
+msgstr "添加…"
+
+msgid "Get New Wallpapers…"
+msgstr "获取新壁纸…"
+
+msgid "No wallpapers found. Add an image to get started."
+msgstr "尚未找到壁纸，请添加图像。"

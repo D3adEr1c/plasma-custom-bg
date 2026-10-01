@@ -44,10 +44,20 @@ WallpaperItem {
         // The wallpaper host owns Apply and persistence. Do not write the
         // whole configuration while a switching-mode update is being applied.
     }
+    NativeWallpaperSource {
+        id: daySource
+        source: root.dayProfile.image
+        targetSize: Qt.size(root.width * Screen.devicePixelRatio, root.height * Screen.devicePixelRatio)
+    }
+    NativeWallpaperSource {
+        id: nightSource
+        source: root.nightProfile.image
+        targetSize: daySource.targetSize
+    }
     PositionedImage {
         anchors.fill: parent
         visible: root.correctOutput && !root.night
-        imageUrl: root.dayProfile.image
+        imageUrl: daySource.resolvedSource
         zoom: root.dayProfile.zoom
         focusX: root.dayProfile.focusX
         focusY: root.dayProfile.focusY
@@ -56,7 +66,7 @@ WallpaperItem {
     PositionedImage {
         anchors.fill: parent
         visible: root.correctOutput && root.night
-        imageUrl: root.nightProfile.image
+        imageUrl: nightSource.resolvedSource
         zoom: root.nightProfile.zoom
         focusX: root.nightProfile.focusX
         focusY: root.nightProfile.focusY

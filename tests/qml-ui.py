@@ -6,15 +6,44 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 os.environ.setdefault('QT_QUICK_BACKEND', 'software')
 from pathlib import Path
 import shutil, tempfile, time, json
-from PySide6.QtCore import QUrl, QObject, QPointF, QPoint, Qt, QCoreApplication, QMetaObject
+from PySide6.QtCore import QUrl, QObject, QPointF, QPoint, Qt, QCoreApplication, QMetaObject, QAbstractListModel, QModelIndex
 from PySide6.QtGui import QGuiApplication, QImage, QColor, QWheelEvent
 from PySide6.QtQml import QQmlEngine, QQmlComponent, QQmlPropertyMap
-from PySide6.QtQuick import QQuickWindow
+from PySide6.QtQuick import QQuickWindow, QQuickImageProvider
 
 test_config = tempfile.TemporaryDirectory()
 os.environ['XDG_CONFIG_HOME'] = test_config.name
 app = QGuiApplication([])
 source = Path(__file__).resolve().parent.parent / 'org.liby0zud.customimage/contents/ui'
+
+class NativeRoleModel(QAbstractListModel):
+    """Plasma 6.7 role contract, including QUrl-valued sources (no old roles)."""
+    names = ['display', 'decoration', 'author', 'preview', 'source', 'removable',
+             'pendingDeletion', 'checked', 'selectors']
+    def __init__(self, rows):
+        super().__init__()
+        self.rows = rows
+    def roleNames(self):
+        return {Qt.UserRole + i: name.encode() for i, name in enumerate(self.names)}
+    def rowCount(self, parent=QModelIndex()):
+        return 0 if parent.isValid() else len(self.rows)
+    def data(self, index, role):
+        if not index.isValid(): return None
+        name = self.names[role - Qt.UserRole] if Qt.UserRole <= role < Qt.UserRole + len(self.names) else None
+        return self.rows[index.row()].get(name)
+
+class PreviewProvider(QQuickImageProvider):
+    """Exercise real Qt Image loading through image://wallpaper-preview URLs."""
+    def __init__(self):
+        super().__init__(QQuickImageProvider.Image)
+        self.requests = []
+    def requestImage(self, identifier, size, requested_size):
+        self.requests.append(identifier)
+        image = QImage(identifier.removeprefix('image/'))
+        size.setWidth(image.width()); size.setHeight(image.height())
+        if requested_size.isValid():
+            image = image.scaled(requested_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        return image
 
 def pump():
     for _ in range(35):
@@ -29,6 +58,7 @@ with tempfile.TemporaryDirectory() as temp:
     config = (folder / 'config.qml').read_text()
     config = config.replace('import org.kde.plasma.plasmoid', '').replace('import org.kde.kcmutils as KCM', '')
     config = config.replace('readonly property var screens: Qt.application.screens', 'property var screens: Qt.application.screens')
+    config = config.replace('id: galleryBackend', 'id: galleryBackend; objectName: "galleryBackend"')
     config = config.replace('id: variantTabs', 'id: variantTabs; objectName: "variantTabs"')
     config = config.replace('id: preview\n', 'id: preview; objectName: "preview"\n')
     translate = 'function i18nd(domain, message, a, b) { return message.replace("%1", a).replace("%2", b); }'
@@ -38,18 +68,78 @@ with tempfile.TemporaryDirectory() as temp:
     (folder / 'PositionedImage.qml').write_text(image_code)
     (folder / 'SystemAppearance.qml').write_text('''import QtQuick
 Item {
+ objectName: "testAppearance"
  property bool monitorCycle: false
  property string initialState: ""
  readonly property string state: ""
- readonly property bool cycleNight: false
- readonly property bool darkTheme: false
+ property bool cycleNight: false
+ property bool darkTheme: false
 }
 ''')
+    # Keep gallery and editor UI real; substitute unavailable native KDE adapters.
+    (folder / 'NativeGalleryBackend.qml').write_text('''import QtQuick
+Item {
+ property size targetSize: Qt.size(1920,1080)
+ property var wallpaperModel: ListModel {}
+ property bool loading: false
+ property var selectedImages: []
+ function wallpaperUrl(key, selectors, night) { return String(key); }
+ function add(url) { return String(url); }
+ function commit() {}
+ function reload() {}
+}
+''')
+    (folder / 'NativeWallpaperSource.qml').write_text('''import QtQuick
+Item { property string source: ""; property size targetSize: Qt.size(1920,1080); readonly property url resolvedSource: source }
+''')
+    # Python image providers cannot acquire the GIL while Qt waits during a
+    # render pass. Only this provider test runs image loading synchronously;
+    # production keeps native C++ provider loading asynchronous.
+    thumbnail_code = (folder / 'NativeThumbnail.qml').read_text()
+    (folder / 'NativeThumbnail.qml').write_text(thumbnail_code.replace('asynchronous: true', 'asynchronous: false'))
+    (folder / 'GetNewWallpapersButton.qml').write_text('''import QtQuick.Controls
+Button { signal wallpapersChanged(); text: "Get New Wallpapers…" }
+''')
+    for name in ['FramingEditor.qml', 'WallpaperGallery.qml']:
+        code = (folder / name).read_text()
+        marker = 'id: editor' if name == 'FramingEditor.qml' else 'id: root'
+        (folder / name).write_text(code.replace(marker, marker + '\n    ' + translate, 1))
     engine = QQmlEngine()
+    preview_provider = PreviewProvider()
+    engine.addImageProvider("wallpaper-preview", preview_provider)
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(folder / 'config.qml')))
     assert not component.isError(), [e.toString() for e in component.errors()]
     root = component.create()
     assert root is not None, [e.toString() for e in component.errors()]
+    # Defaults follow the effective mode, including late scheduler/theme updates.
+    for mode in (0, 1, 2, 3):
+        default_page = component.createWithInitialProperties({'cfg_SwitchMode': mode})
+        assert default_page is not None
+        default_notifications = []
+        default_page.configurationChanged.connect(lambda: default_notifications.append(True))
+        pump()
+        default_tabs = default_page.findChild(QObject, 'variantTabs')
+        system = default_page.findChild(QObject, 'testAppearance')
+        assert default_tabs.property('currentIndex') == (1 if mode == 3 else 0)
+        system.setProperty('cycleNight', True)
+        system.setProperty('darkTheme', True)
+        pump()
+        assert default_tabs.property('currentIndex') == (0 if mode == 2 else 1)
+        # A manual tab choice survives subsequent appearance and restore updates.
+        day_button = default_page.findChild(QObject, 'dayTab')
+        QMetaObject.invokeMethod(day_button, 'clicked', Qt.DirectConnection)
+        default_tabs.setProperty('currentIndex', 0)
+        system.setProperty('cycleNight', False)
+        system.setProperty('darkTheme', False)
+        pump()
+        system.setProperty('cycleNight', True)
+        system.setProperty('darkTheme', True)
+        default_page.restoreOutputProfile()
+        pump()
+        assert default_tabs.property('currentIndex') == 0
+        assert default_notifications == []
+        default_page.deleteLater()
+        pump()
     edit_notifications = []
     root.configurationChanged.connect(lambda: edit_notifications.append(True))
     window = QQuickWindow()
@@ -70,13 +160,15 @@ Item {
     root.setProperty('cfg_NightFocusX', 0.8)
     window.show(); pump()
     tabs = root.findChild(QObject, 'variantTabs')
+    editor = root.findChild(QObject, 'framingEditor')
+    root.openFraming(); pump()
     preview = root.findChild(QObject, 'preview')
     assert tabs and preview
     assert abs(root.findChild(QObject, 'dayTab').width() - root.findChild(QObject, 'nightTab').width()) < 1e-6
     assert abs(preview.width() / preview.height() - 2560 / 1440) < 1e-6
     assert preview.property('zoom') == 1.5
     assert preview.mapToScene(QPointF(0, 0)).x() >= 32
-    tabs.setProperty('currentIndex', 1); pump()
+    tabs.setProperty('currentIndex', 1); root.openFraming(); pump()
     assert preview.property('zoom') == 2.0
     assert preview.property('focusX') == 0.8
     assert edit_notifications == []  # Host initialization and tabs are read-only.
@@ -92,16 +184,35 @@ Item {
     pump()
     assert len(edit_notifications) == 2
     assert root.property('cfg_ProfileRevision') == revision_before_noop
+    # Draft edits never notify the host until confirmed. Closing discards them.
+    root.openFraming(); pump()
+    draft_notifications = len(edit_notifications)
+    editor.setProperty('draftZoom', 2.6)
+    editor.setProperty('draftX', 0.3)
+    editor.close(); pump()
+    assert root.property('cfg_NightZoom') == 2.3
+    assert len(edit_notifications) == draft_notifications
+    root.openFraming(); pump()
+    assert preview.property('zoom') == 2.3
     position = preview.mapToScene(QPointF(preview.width() / 2, preview.height() / 2))
     def wheel(delta):
         event = QWheelEvent(position, position, QPoint(0, 0), QPoint(0, delta), Qt.NoButton, Qt.NoModifier, Qt.ScrollUpdate, False)
-        QCoreApplication.sendEvent(window, event); pump()
+        QCoreApplication.sendEvent(editor, event); pump()
     wheel(120)
-    assert abs(root.property('cfg_NightZoom') - 2.31) < 1e-9
+    assert abs(editor.property('draftZoom') - 2.31) < 1e-9
+    assert root.property('cfg_NightZoom') == 2.3
     for _ in range(12): wheel(10)
+    assert abs(editor.property('draftZoom') - 2.32) < 1e-9
+    assert len(edit_notifications) == draft_notifications
+    editor.accept(); pump()
     assert abs(root.property('cfg_NightZoom') - 2.32) < 1e-9
-    tabs.setProperty('currentIndex', 0); pump()
+    assert len(edit_notifications) == draft_notifications + 1
+    root.openFraming(); pump()
+    editor.accept(); pump()
+    assert len(edit_notifications) == draft_notifications + 1  # Unchanged OK is clean.
+    tabs.setProperty('currentIndex', 0); root.openFraming(); pump()
     assert preview.property('zoom') == 1.5
+    editor.close()
     root.copyDayToNight(); pump()
     assert root.property('cfg_NightZoom') == root.property('cfg_Zoom')
     assert root.property('cfg_NightFocusX') == root.property('cfg_FocusX')
@@ -170,6 +281,67 @@ Item {
     reopened_tabs.setProperty('currentIndex', 1); pump()
     assert reopened.property('currentImage') == night_url
     assert reopened.property('currentZoom') == 2.71
+    # Native model roles reach the real gallery delegate and the active profile.
+    gallery_backend = root.findChild(QObject, 'galleryBackend')
+    grid = root.findChild(QObject, 'wallpaperGrid')
+    engine.globalObject().setProperty('galleryGrid', engine.newQObject(grid))
+    fixtures = [dict(display='Day image', author='Test', source=QUrl(day_url),
+                     preview='image://wallpaper-preview/image/' + str(folder / 'day.png'), selectors=[]),
+                dict(display='Night image', author='Test', source=QUrl(night_url),
+                     preview='image://wallpaper-preview/image/' + str(folder / 'night.png'), selectors=[])]
+    gallery_model = NativeRoleModel(fixtures)
+    gallery_backend.setProperty('wallpaperModel', gallery_model)
+    pump()
+    assert grid.property('count') == 2
+    thumbnails = [engine.evaluate('galleryGrid.itemAtIndex(' + str(i) + ').contentItem.children[0]').toQObject() for i in range(2)]
+    assert all(thumbnails)
+    assert all(engine.evaluate('galleryGrid.itemAtIndex(' + str(i) + ').contentItem.children[0].status').toInt() == 1 for i in range(2))  # Image.Ready
+    assert len(preview_provider.requests) >= 2
+    assert all(thumbnail.property('source').toString().startswith('image://wallpaper-preview/') for thumbnail in thumbnails)
+    tabs.setProperty('currentIndex', 0); pump()
+    original_night = root.property('cfg_NightImage')
+    result = engine.evaluate('galleryGrid.itemAtIndex(0).clicked()')
+    assert not result.isError(), result.toString()
+    pump()
+    assert root.property('cfg_Image') == day_url
+    assert root.property('cfg_NightImage') == original_night
+    adjust_button = root.findChild(QObject, 'adjustFraming')
+    assert adjust_button.property('enabled') is True
+    assert QMetaObject.invokeMethod(adjust_button, 'clicked', Qt.DirectConnection)
+    pump()
+    assert editor.isVisible() is True
+    assert preview.property('imageUrl').toString() == day_url
+    editor.close()
+    count_before_same = len(edit_notifications)
+    engine.evaluate('galleryGrid.itemAtIndex(0).clicked()'); pump()
+    assert len(edit_notifications) == count_before_same
+    tabs.setProperty('currentIndex', 1); pump()
+    engine.evaluate('galleryGrid.itemAtIndex(1).clicked()'); pump()
+    assert root.property('cfg_NightImage') == night_url
+    assert root.property('cfg_Image') == day_url
+    if os.environ.get('CUSTOM_IMAGE_QA_DIR'):
+        qa = Path(os.environ['CUSTOM_IMAGE_QA_DIR']); qa.mkdir(parents=True, exist_ok=True)
+        window.resize(760, 600); root.setWidth(760); root.setHeight(600); pump()
+        window.grabWindow().save(str(qa / 'gallery.png'))
+        root.openFraming(); pump()
+        editor.grabWindow().save(str(qa / 'framing.png'))
+        editor.close()
+    # A draft cannot land on another image or monitor after the host changes.
+    root.openFraming(); pump()
+    editor.setProperty('draftZoom', 2.99)
+    root.setImage(day_url, True); pump()
+    old_zoom = root.property('cfg_NightZoom')
+    editor.accept(); pump()
+    assert root.property('cfg_NightZoom') == old_zoom
+    root.openFraming(); pump()
+    editor.setProperty('draftZoom', 2.98)
+    root.setProperty('screen', engine.evaluate('({name:"DP-2",width:1920,height:1080})')); pump()
+    assert editor.isVisible() is False
+    before_moved_accept = len(edit_notifications)
+    editor.accept(); pump()
+    assert len(edit_notifications) == before_moved_accept
+    root.setProperty('screen', None); pump()
+
     # A live host with an older schema must not allow edits it cannot save.
     old_map = engine.evaluate('({keys: function() { return ["Image", "Zoom", "FocusX", "FocusY"]; }})')
     root.setProperty('wallpaperConfiguration', old_map); pump()
@@ -306,4 +478,4 @@ Item {
     wallpaper.deleteLater()
     reopened.deleteLater()
     root.deleteLater(); window.close(); pump()
-print('Passed: Qt UI, equal tab widths, independent edits, bidirectional copy, wheel events, host-map synchronization, save/reload, stale-schema guard, per-output restoration, cancelled edits and clean initialization/no-op actions. Native KDE services use stand-ins.')
+print('Passed: gallery selection, framing dialog drafts/OK/cancel, image/output guards, Qt UI, equal tab widths, independent edits, bidirectional copy, wheel events, host-map synchronization, save/reload, stale-schema guard, per-output restoration, cancelled edits and clean initialization/no-op actions. Native KDE services use stand-ins.')
