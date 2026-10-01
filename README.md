@@ -34,6 +34,7 @@ The development target is Fedora Kinoite 44 with Plasma 6.7.5. Compatibility wit
 ```sh
 git clone https://github.com/D3adEr1c/plasma-custom-bg.git
 cd plasma-custom-bg
+chmod +x ./install.sh
 ./install.sh
 ```
 
