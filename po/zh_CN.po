@@ -1,5 +1,5 @@
 msgid ""
-msgstr "Project-Id-Version: Custom Image 0.3.3\nPO-Revision-Date: 2026-10-01 07:30+0000\nLast-Translator: Custom Image contributors\nLanguage-Team: Simplified Chinese\nLanguage: zh_CN\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
+msgstr "Project-Id-Version: Custom Image 0.3.4\nPO-Revision-Date: 2026-10-01 07:30+0000\nLast-Translator: Custom Image contributors\nLanguage-Team: Simplified Chinese\nLanguage: zh_CN\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
 
 msgid "Choose wallpaper"
 msgstr "选择壁纸"

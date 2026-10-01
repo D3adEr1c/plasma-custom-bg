@@ -50,6 +50,8 @@ Item {
     assert not component.isError(), [e.toString() for e in component.errors()]
     root = component.create()
     assert root is not None, [e.toString() for e in component.errors()]
+    edit_notifications = []
+    root.configurationChanged.connect(lambda: edit_notifications.append(True))
     window = QQuickWindow()
     window.resize(1000, 1000)
     root.setParentItem(window.contentItem())
@@ -77,10 +79,19 @@ Item {
     tabs.setProperty('currentIndex', 1); pump()
     assert preview.property('zoom') == 2.0
     assert preview.property('focusX') == 0.8
+    assert edit_notifications == []  # Host initialization and tabs are read-only.
     root.setZoom(2.3); root.setCurrentPosition(0.9, 0.1); pump()
     assert root.property('cfg_NightZoom') == 2.3
     assert root.property('cfg_Zoom') == 1.5
     assert root.property('cfg_FocusX') == 0.2
+    assert len(edit_notifications) == 2
+    revision_before_noop = root.property('cfg_ProfileRevision')
+    root.setZoom(2.3)
+    root.setCurrentPosition(0.9, 0.1)
+    root.setSwitchMode(root.property('cfg_SwitchMode'))
+    pump()
+    assert len(edit_notifications) == 2
+    assert root.property('cfg_ProfileRevision') == revision_before_noop
     position = preview.mapToScene(QPointF(preview.width() / 2, preview.height() / 2))
     def wheel(delta):
         event = QWheelEvent(position, position, QPoint(0, 0), QPoint(0, delta), Qt.NoButton, Qt.NoModifier, Qt.ScrollUpdate, False)
@@ -120,6 +131,13 @@ Item {
     pump()
     assert [root.property('cfg_Night' + key) for key in ('Image','Zoom','FocusX','FocusY')] == source_day
     assert [root.property('cfg_' + key) for key in ('Image','Zoom','FocusX','FocusY')] == source_day
+    equal_copy_revision = root.property('cfg_ProfileRevision')
+    equal_copy_notifications = len(edit_notifications)
+    root.copyDayToNight()
+    root.copyNightToDay()
+    pump()
+    assert root.property('cfg_ProfileRevision') == equal_copy_revision
+    assert len(edit_notifications) == equal_copy_notifications
     tabs.setProperty('currentIndex', 0)
     root.setProperty('cfg_NightImage', ''); pump()
     assert copy_button.property('enabled') is False
@@ -133,11 +151,11 @@ Item {
     def sync_host():
         for key in config_keys: host_map[key] = root.property('cfg_' + key)
     root.configurationChanged.connect(sync_host)
-    root.setProperty('cfg_NightImage', night_url)
-    root.setProperty('cfg_NightZoom', 2.71)
-    root.setProperty('cfg_NightFocusX', 0.12)
-    root.setProperty('cfg_NightFocusY', 0.34)
-    root.setProperty('cfg_SwitchMode', 0)
+    tabs.setProperty('currentIndex', 1)
+    root.setImage(night_url, True)
+    root.setZoom(2.71)
+    root.setCurrentPosition(0.12, 0.34)
+    root.setSwitchMode(0)
     pump()
     assert host_map['SwitchMode'] == 0 and host_map['NightImage'] == night_url
     stored = folder / 'saved-settings.json'
@@ -175,7 +193,7 @@ Item {
     outputs(['eDP-1', 'HDMI-A-1'])
     assert root.property('previewOutputMissing') is False
     root.setProperty('screen', engine.evaluate('({name: "eDP-1", width:1280, height:800})'))
-    root.claimTargetOutput(); pump()
+    root.claimTargetOutput(); root.touchProfile(); pump()
     assert root.property('cfg_TargetOutput') == 'eDP-1'
     assert root.property('selectedPreviewOutput') == 'HDMI-A-1'
     assert host_map['TargetOutput'] == 'eDP-1'
@@ -224,12 +242,33 @@ Item {
     # Opening B's editor with migrated A settings restores B's independent record.
     migrated_editor = component.createWithInitialProperties({'cfg_TargetOutput':'HDMI-A-1',
         'cfg_Zoom':1.2, 'screen':engine.evaluate('({name:"eDP-1",width:1280,height:800})')})
+    migrated_signals = []
+    migrated_editor.configurationChanged.connect(lambda: migrated_signals.append('aggregate'))
+    for key in config_keys:
+        getattr(migrated_editor, 'cfg_' + key + 'Changed').connect(lambda: migrated_signals.append('field'))
     pump()
+    assert migrated_signals == []  # No dirty signal, including individual fields.
+    assert migrated_editor.property('cfg_TargetOutput') == 'HDMI-A-1'
+    assert migrated_editor.property('cfg_Zoom') == 1.2
+    assert migrated_editor.property('currentZoom') == 2.9
+    assert migrated_editor.property('editorProfile').toVariant()['NightZoom'] == 2.6
+    assert migrated_editor.property('editorProfile').toVariant()['SwitchMode'] == 1
+    unchanged_revision = migrated_editor.property('cfg_ProfileRevision')
+    migrated_editor.restoreOutputProfile()
+    migrated_editor.restoreOutputProfile()
+    migrated_editor.setZoom(2.9)
+    migrated_editor.setSwitchMode(1)
+    migrated_editor.setCurrentPosition(migrated_editor.property('currentFocusX'), migrated_editor.property('currentFocusY'))
+    migrated_tabs = migrated_editor.findChild(QObject, 'variantTabs')
+    migrated_tabs.setProperty('currentIndex', 1); pump()
+    migrated_tabs.setProperty('currentIndex', 0); pump()
+    assert migrated_signals == []
+    assert migrated_editor.property('cfg_ProfileRevision') == unchanged_revision
+    migrated_editor.setZoom(1.7); pump()
+    assert migrated_signals.count('aggregate') == 1
     assert migrated_editor.property('cfg_TargetOutput') == 'eDP-1'
-    assert migrated_editor.property('cfg_Zoom') == 2.9
     assert migrated_editor.property('cfg_NightZoom') == 2.6
     assert migrated_editor.property('cfg_SwitchMode') == 1
-    migrated_editor.setZoom(1.7); pump()
     # Editing/cancelling does not write the independent store before host Apply.
     b.refreshProfile(); pump()
     assert b.property('dayProfile').toVariant()['zoom'] == 2.9
@@ -249,8 +288,22 @@ Item {
     assert b.property('effectiveConfiguration').toVariant()['NightZoom'] == 1.8
     assert b.property('effectiveConfiguration').toVariant()['FocusX'] == 0.33
     assert b.property('night') is True
+    # Reopening an already matching, applied profile must also remain clean.
+    saved_profile = b.property('effectiveConfiguration').toVariant()
+    matching_initial = {'cfg_' + key:value for key,value in saved_profile.items()}
+    matching_initial['screen'] = engine.evaluate('({name:"eDP-1",width:1280,height:800})')
+    matching_editor = component.createWithInitialProperties(matching_initial)
+    matching_signals = []
+    matching_editor.configurationChanged.connect(lambda: matching_signals.append('aggregate'))
+    for key in config_keys:
+        getattr(matching_editor, 'cfg_' + key + 'Changed').connect(lambda: matching_signals.append('field'))
+    pump()
+    assert matching_signals == []
+    for key in config_keys:
+        assert matching_editor.property('cfg_' + key) == saved_profile[key]
+    matching_editor.deleteLater()
     migrated_editor.deleteLater(); b.deleteLater()
     wallpaper.deleteLater()
     reopened.deleteLater()
     root.deleteLater(); window.close(); pump()
-print('Passed: Qt UI, equal tab widths, independent edits, bidirectional copy, wheel events, host-map synchronization, save/reload, stale-schema guard, per-output restoration and cancelled edits. Native KDE services use stand-ins.')
+print('Passed: Qt UI, equal tab widths, independent edits, bidirectional copy, wheel events, host-map synchronization, save/reload, stale-schema guard, per-output restoration, cancelled edits and clean initialization/no-op actions. Native KDE services use stand-ins.')

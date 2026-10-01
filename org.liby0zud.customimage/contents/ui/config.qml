@@ -23,15 +23,17 @@ Item {
     property string cfg_ScheduleState: ""
     property string cfg_TargetOutput: ""
     property string cfg_ProfileRevision: "0"
-    property bool restoringProfile: false
+    property bool applyingEdit: false
+    property var restoredProfile: null
+    readonly property var editorProfile: restoredProfile || Profiles.snapshot(root, "cfg_")
     property bool editorReady: false
     readonly property bool editingNight: variantTabs.currentIndex === 1
     onEditingNightChanged: preview.resetWheelInput()
-    readonly property string currentImage: editingNight ? cfg_NightImage : cfg_Image
-    readonly property real currentZoom: editingNight ? cfg_NightZoom : cfg_Zoom
-    readonly property real currentFocusX: editingNight ? cfg_NightFocusX : cfg_FocusX
-    readonly property real currentFocusY: editingNight ? cfg_NightFocusY : cfg_FocusY
-    readonly property bool liveNight: AppearanceLogic.isNight(cfg_SwitchMode, appearance.cycleNight, appearance.darkTheme)
+    readonly property string currentImage: editingNight ? editorProfile.NightImage : editorProfile.Image
+    readonly property real currentZoom: editingNight ? editorProfile.NightZoom : editorProfile.Zoom
+    readonly property real currentFocusX: editingNight ? editorProfile.NightFocusX : editorProfile.FocusX
+    readonly property real currentFocusY: editingNight ? editorProfile.NightFocusY : editorProfile.FocusY
+    readonly property bool liveNight: AppearanceLogic.isNight(editorProfile.SwitchMode, appearance.cycleNight, appearance.darkTheme)
 
     readonly property bool settingsSchemaReady: hasProfileKeys(wallpaperConfiguration)
         && hasProfileKeys(desktopItem ? desktopItem.configuration : null)
@@ -42,60 +44,57 @@ Item {
         return ["NightImage", "NightZoom", "NightFocusX", "NightFocusY", "SwitchMode", "TargetOutput", "ProfileRevision"]
             .every(key => keys.indexOf(key) !== -1);
     }
-    // Also notify hosts that use the aggregate signal to track edits.
-    onCfg_ImageChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_ZoomChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_FocusXChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_FocusYChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_NightImageChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_NightZoomChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_NightFocusXChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_NightFocusYChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_SwitchModeChanged: { if (!restoringProfile) configurationChanged(); }
-    onCfg_TargetOutputChanged: { if (!restoringProfile) configurationChanged(); }
-
-    onCfg_ProfileRevisionChanged: { if (!restoringProfile) configurationChanged(); }
-
+    // Host initialization/reloads are not user edits. Notify only after a
+    // complete, actual change, never from cfg_<key> change handlers.
     function setImage(value, night) {
+        finishPendingRestore();
+        if (value === (night ? editorProfile.NightImage : editorProfile.Image)) return;
         claimTargetOutput();
         if (night) cfg_NightImage = value;
         else cfg_Image = value;
         touchProfile();
     }
     function setZoom(value) {
+        finishPendingRestore();
+        if (value === currentZoom) return;
         claimTargetOutput();
         if (editingNight) cfg_NightZoom = value;
         else cfg_Zoom = value;
         touchProfile();
     }
     function setCurrentPosition(x, y) {
+        finishPendingRestore();
+        if (x === currentFocusX && y === currentFocusY) return;
         claimTargetOutput();
         if (editingNight) { cfg_NightFocusX = x; cfg_NightFocusY = y; }
         else { cfg_FocusX = x; cfg_FocusY = y; }
         touchProfile();
     }
-    function copyDayToNight() {
+    function setSwitchMode(value) {
+        finishPendingRestore();
+        if (value === editorProfile.SwitchMode) return;
         claimTargetOutput();
-        cfg_NightImage = cfg_Image;
-        cfg_NightZoom = cfg_Zoom;
-        cfg_NightFocusX = cfg_FocusX;
-        cfg_NightFocusY = cfg_FocusY;
+        cfg_SwitchMode = value;
         touchProfile();
     }
-    function copyNightToDay() {
-        // An absent night image falls back to day; never erase day with it.
-        if (!cfg_NightImage) return;
+    function copyDayToNight() { copyProfile(true); }
+    function copyNightToDay() { copyProfile(false); }
+    function copyProfile(toNight) {
+        finishPendingRestore();
+        const profile = editorProfile;
+        if (!toNight && !profile.NightImage) return;
+        const source = toNight ? "" : "Night";
+        const target = toNight ? "Night" : "";
+        const fields = ["Image", "Zoom", "FocusX", "FocusY"];
+        if (fields.every(key => profile[source + key] === profile[target + key])) return;
         claimTargetOutput();
-        cfg_Image = cfg_NightImage;
-        cfg_Zoom = cfg_NightZoom;
-        cfg_FocusX = cfg_NightFocusX;
-        cfg_FocusY = cfg_NightFocusY;
+        fields.forEach(key => root["cfg_" + target + key] = profile[source + key]);
         touchProfile();
     }
     SystemAppearance {
         id: appearance
-        monitorCycle: root.cfg_SwitchMode === 0
-        initialState: root.cfg_ScheduleState
+        monitorCycle: root.editorProfile.SwitchMode === 0
+        initialState: root.editorProfile.ScheduleState
     }
 
     // Plasma injects these properties when constructing the configuration page.
@@ -126,10 +125,14 @@ Item {
     readonly property bool previewOutputMissing: !!selectedPreviewOutput && !fallbackScreen && !hostOutputName
     OutputStore { id: outputStore }
     Timer { id: restoreTimer; interval: 50; onTriggered: root.restoreOutputProfile() }
+    readonly property string configurationSerial: JSON.stringify(Profiles.snapshot(root, "cfg_"))
+    onConfigurationSerialChanged: {
+        if (editorReady && !applyingEdit) restoreTimer.restart();
+    }
     Component.onCompleted: { editorReady = true; restoreTimer.restart(); }
     onHostOutputNameChanged: { if (editorReady) restoreTimer.restart(); }
     function restoreOutputProfile() {
-        if (!hostOutputName || !settingsSchemaReady) return;
+        if (!hostOutputName || !settingsSchemaReady) { restoredProfile = null; return; }
         const incoming = Profiles.snapshot(root, "cfg_");
         const stored = outputStore.read(hostOutputName);
         // Prefer saved output data over a migrated desktop's foreign settings.
@@ -137,19 +140,25 @@ Item {
             || Profiles.revision(stored) >= Profiles.revision(incoming)) ? stored
             : incoming.TargetOutput && incoming.TargetOutput !== hostOutputName
                 ? Profiles.defaults(hostOutputName) : null;
-        if (!chosen) return;
-        restoringProfile = true;
-        Profiles.keys.forEach(key => root["cfg_" + key] = chosen[key]);
-        restoringProfile = false;
-        configurationChanged();
+        // Keep restored data in the editor view. Assigning cfg_ properties here
+        // also dirties hosts that listen to each individual property signal.
+        restoredProfile = chosen && JSON.stringify(chosen) !== JSON.stringify(incoming) ? chosen : null;
+    }
+    function finishPendingRestore() {
+        if (restoreTimer.running) { restoreTimer.stop(); restoreOutputProfile(); }
     }
     function claimTargetOutput() {
-        // Finish pending restoration before editing a newly selected display.
-        if (restoreTimer.running) { restoreTimer.stop(); restoreOutputProfile(); }
+        finishPendingRestore();
+        applyingEdit = true;
+        const profile = editorProfile;
+        Profiles.keys.forEach(key => root["cfg_" + key] = profile[key]);
+        restoredProfile = null;
         if (targetOutputName && !previewOutputMissing) cfg_TargetOutput = targetOutputName;
     }
     function touchProfile() {
         cfg_ProfileRevision = String(Math.max(Date.now(), Profiles.revision(Profiles.snapshot(root, "cfg_")) + 1));
+        applyingEdit = false;
+        configurationChanged();
     }
     readonly property var targetGeometry: Geometry.resolve(screenSize, screen, desktopSize, fallbackScreen)
     readonly property bool automaticTarget: targetGeometry.source === "host" || targetGeometry.source === "desktop"
@@ -200,18 +209,18 @@ Item {
                     i18nd("plasma_wallpaper_org.liby0zud.customimage", "Always day"),
                     i18nd("plasma_wallpaper_org.liby0zud.customimage", "Always night")
                 ]
-                currentIndex: root.cfg_SwitchMode
-                onActivated: { root.claimTargetOutput(); root.cfg_SwitchMode = currentIndex; root.touchProfile(); }
+                currentIndex: root.editorProfile.SwitchMode
+                onActivated: root.setSwitchMode(currentIndex)
             }
-            Item { visible: root.cfg_SwitchMode === 0; implicitHeight: 1 }
+            Item { visible: root.editorProfile.SwitchMode === 0; implicitHeight: 1 }
             Controls.Button {
-                visible: root.cfg_SwitchMode === 0
+                visible: root.editorProfile.SwitchMode === 0
                 text: i18nd("plasma_wallpaper_org.liby0zud.customimage", "Configure system day/night cycle…")
                 onClicked: KCM.KCMLauncher.open("kcm_nighttime")
             }
         }
         Controls.Button {
-            visible: root.hostOutputName && root.cfg_TargetOutput !== root.hostOutputName
+            visible: root.hostOutputName && root.editorProfile.TargetOutput !== root.hostOutputName
             Layout.alignment: Qt.AlignHCenter
             text: i18nd("plasma_wallpaper_org.liby0zud.customimage", "Bind settings to %1", root.hostOutputName)
             onClicked: { root.claimTargetOutput(); root.touchProfile(); }
@@ -307,7 +316,7 @@ Item {
                 : i18nd("plasma_wallpaper_org.liby0zud.customimage", "Currently active: Day")
         }
         Controls.Label {
-            visible: root.editingNight && !root.cfg_NightImage
+            visible: root.editingNight && !root.editorProfile.NightImage
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
@@ -316,7 +325,7 @@ Item {
         Controls.Button {
             objectName: "profileCopy"
             Layout.alignment: Qt.AlignHCenter
-            enabled: root.editingNight || !!root.cfg_NightImage
+            enabled: root.editingNight || !!root.editorProfile.NightImage
             text: root.editingNight
                 ? i18nd("plasma_wallpaper_org.liby0zud.customimage", "Copy day settings to night")
                 : i18nd("plasma_wallpaper_org.liby0zud.customimage", "Copy night settings to day")
